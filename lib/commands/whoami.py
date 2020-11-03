@@ -9,6 +9,7 @@ import argparse
 from lib import shellcode
 
 __description__ = "Get infomation about the current user the beacon is running as"
+__author__ = "@_batsec_"
 
 # using work around for stager bug
 # EXEC_ID       = 0x4000
@@ -25,13 +26,14 @@ def error(message):
     ERROR = True
     error_list += f"\033[0;31m{message}\033[0m\n"
 
-def exit(status=0, message=None): 
+def exit(status=0, message=None):
     if message != None: print(message)
     return
 
 def whoami_callback(shad0w, data):
     if len(data) > 1:
-        shad0w.debug.log(data, log=True, pre=False)
+        print("")
+        shad0w.debug.log(data.strip("\r\n"), log=True, pre=False, end='')
 
     return ""
 
@@ -71,7 +73,7 @@ whoami --privs
 whoami --groups
 """
     
-    parse = argparse.ArgumentParser(prog='ls',
+    parse = argparse.ArgumentParser(prog='whoami',
                                 formatter_class=argparse.RawDescriptionHelpFormatter,
                                 epilog=usage_examples)
     

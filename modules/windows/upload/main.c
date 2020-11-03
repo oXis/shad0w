@@ -91,6 +91,8 @@ void main()
     char*     b64_out;
     FILE*     write_ptr;
     LPCWSTR*  ResBuffer;
+    LPCSTR    Cwd, Path;
+    DWORD     BufferSize;
     LPCWSTR   ReqBuffer[MAX_PATH * 3];
     HINTERNET hSession, hConnect, hRequest = NULL;
 
@@ -110,6 +112,8 @@ void main()
 
     if (!hConnect)
     {
+        WinHttpCloseHandle(hSession);
+
         printf("ERROR: WinHttpConnect, code: %d\n", GetLastError());
         return;
     }
@@ -119,6 +123,10 @@ void main()
 
     if (!hRequest)
     {
+
+        WinHttpCloseHandle(hSession);
+        WinHttpCloseHandle(hConnect);
+
         printf("ERROR: WinHttpOpenRequest, code: %d\n", GetLastError());
         return;
     }
@@ -127,6 +135,10 @@ void main()
     DWORD flags = SECURITY_FLAG_IGNORE_UNKNOWN_CA | SECURITY_FLAG_IGNORE_CERT_DATE_INVALID | SECURITY_FLAG_IGNORE_CERT_CN_INVALID | SECURITY_FLAG_IGNORE_CERT_WRONG_USAGE;
     if (!WinHttpSetOption(hRequest, WINHTTP_OPTION_SECURITY_FLAGS, &flags, sizeof(flags)))
     {
+        WinHttpCloseHandle(hRequest);
+        WinHttpCloseHandle(hSession);
+        WinHttpCloseHandle(hConnect);
+
         printf("ERROR: WinHttpSetOption, code: %d\n", GetLastError());
         return FALSE;
     }
@@ -140,29 +152,30 @@ void main()
 
     // check if the request was successful
     if (bResults)
-    {       
+    {
         bResults = WinHttpReceiveResponse(hRequest, NULL);
     }
 
     if (bResults)
-    {  
+    {
         DWORD dwSize = 0;
         DWORD dwDownloaded = 0;
         LPSTR pszOutBuffer;
 
-        ResBuffer = "";
+        BufferSize = 1000;
+        ResBuffer  = malloc(BufferSize);
 
-        do 
+        do
         {
             // check how much available data there is
 
             dwSize = 0;
-            if (!WinHttpQueryDataAvailable( hRequest, &dwSize)) 
+            if (!WinHttpQueryDataAvailable( hRequest, &dwSize))
             {
                 printf( "Error %u in WinHttpQueryDataAvailable.\n", GetLastError());
                 break;
             }
-            
+
             // out of data
 
             if (!dwSize)
@@ -177,27 +190,35 @@ void main()
             if (!pszOutBuffer)
             {
                 printf("Out of memory\n");
+                free(pszOutBuffer);
+
                 break;
             }
-            
+
             // read all the data
 
             ZeroMemory(pszOutBuffer, dwSize + 1);
 
             if (!WinHttpReadData( hRequest, (LPVOID)pszOutBuffer, dwSize, &dwDownloaded))
-            {                                  
+            {
                 // been an error
+                free(pszOutBuffer);
+
                 return FALSE;
             }
             else
             {
+                if ((strlen(ResBuffer) + strlen(pszOutBuffer)) > BufferSize)
+                {
+                    ResBuffer = realloc(ResBuffer, (strlen(ResBuffer) + strlen(pszOutBuffer)));
+                }
+
                 asprintf(&ResBuffer, "%s%s", ResBuffer, pszOutBuffer);
             }
-        
-            // free the memory allocated to the buffer.
 
+            // free the memory allocated to the buffer.
             free(pszOutBuffer);
-                
+
         } while (dwSize > 0);
     }
 
@@ -207,12 +228,17 @@ void main()
 
     b64_out = base64_decode((const char*)ResBuffer, out_len - 1, &out_len);
 
+    // free up the buffer
+    free(ResBuffer);
+
     if (ABS_PATH)
     {
         write_ptr = fopen(FILENAME,"wb");
     } else {
-        LPCSTR Cwd, Path;
-        
+
+        Cwd = (LPCSTR)malloc(MAX_PATH);
+        Path = (LPCSTR)malloc(MAX_PATH + strlen(FILENAME));
+
         if (GetCurrentDirectory(MAX_PATH, Cwd) == 0)
         {
             printf("ERROR: GetCurrentDirectory, error code: %d\n", GetLastError());
@@ -226,6 +252,16 @@ void main()
     fwrite(b64_out, b64_len, 1, write_ptr);
 
     printf("\033[1;32m[+]\033[0m File Uploaded.\n");
+
+    // free the buffers
+    free(Cwd);
+    free(Path);
+    free(b64_out);
+
+    // clean up the handles
+    WinHttpCloseHandle(hRequest);
+    WinHttpCloseHandle(hSession);
+    WinHttpCloseHandle(hConnect);
 
     return;
 }

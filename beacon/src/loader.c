@@ -1,6 +1,6 @@
 #define WIN32_LEAN_AND_MEAN
 
-// kinda important
+// kind of important
 
 #include <ntdef.h>
 #include <stdio.h>
@@ -394,7 +394,7 @@ BOOL InjectCode(CHAR* Bytes, SIZE_T Size, DWORD PID)
         ResumeThread(rThread);
     #endif
 
-    // reslove the address of NtAlertResumeThread
+    // resolve the address of NtAlertResumeThread
     _NtAlertResumeThread NtAlertResumeThread = (_NtAlertResumeThread)GetProcAddress(LoadLibrary("ntdll.dll"), "NtAlertResumeThread");
 
     // honestly not sure why i need to do this, guess windows is just weird ¯\_(ツ)_/¯
@@ -542,7 +542,7 @@ BOOL InjectDLL(CHAR* Bytes, SIZE_T Size, DWORD PID)
         ResumeThread(rThread);
     #endif
 
-    // reslove the address of NtAlertResumeThread
+    // resolve the address of NtAlertResumeThread
     _NtAlertResumeThread NtAlertResumeThread = (_NtAlertResumeThread)GetProcAddress(LoadLibrary("ntdll.dll"), "NtAlertResumeThread");
 
     // honestly not sure why i need to do this, guess windows is just weird ¯\_(ツ)_/¯
